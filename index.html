@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta name="robots" content="noindex">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>電子スタンプラリー</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#fbf1dc; --card:#fffaf0; --ink:#1b2a4a; --ink2:#46526e;
+  --red:#b32a17; --hanko:#d63a21; --mustard:#f0b429; --line:#e3d3b0; --ok:#1f6b4a;
+  --font:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:var(--font);color:var(--ink);background-color:var(--paper);
+  background-image:radial-gradient(rgba(27,42,74,.06) 1px,transparent 1.3px);background-size:16px 16px;
+  line-height:1.6;font-size:16px;-webkit-tap-highlight-color:transparent;line-break:strict;overflow-wrap:anywhere}
+body.modal-open{overflow:hidden}
+h1,h2,h3,p{margin:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#app{max-width:520px;margin:0 auto;padding:10px 14px 36px}
+:focus-visible{outline:3px solid var(--ink);outline-offset:2px;box-shadow:0 0 0 6px #fff}
+h1:focus,h2:focus{outline:none;box-shadow:none}
+
+.card{background:var(--card);border:2px solid var(--ink);border-radius:18px;padding:16px;margin:16px 0;box-shadow:0 4px 0 var(--ink)}
+.card h2{font-size:1.15rem;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+
+/* header */
+.head{padding-top:0;overflow:hidden;text-align:center}
+.bunting{display:block;width:calc(100% + 32px);margin:0 -16px 6px;height:30px}
+.head h1{font-size:clamp(1.15rem,5.4vw,1.45rem);font-weight:800;line-height:1.35;text-wrap:balance}
+.head .sub{color:var(--ink2);font-size:.95rem;margin-top:4px;text-wrap:balance}
+.prog{margin-top:14px}
+.count{font-size:2.2rem;font-weight:800;line-height:1.1;color:var(--red);font-variant-numeric:tabular-nums}
+.count span{font-size:.9rem;color:var(--ink2);font-weight:700;margin-left:6px}
+.bar{height:16px;background:#eadfc4;border:2px solid var(--ink);border-radius:99px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--hanko);transition:width .5s ease}
+
+.warn-banner{margin:10px 0 0;padding:10px 12px;background:#fff1c9;border:2px solid #b07a00;border-radius:12px;font-size:.9rem;font-weight:700}
+
+/* stamp slots */
+.slots{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:12px 10px}
+.slot{width:calc((100% - 20px)/3);text-align:center;position:relative}
+@media (min-width:440px){.slot{width:calc((100% - 40px)/5)}}
+.circle{position:relative;aspect-ratio:1;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.slot.empty .circle{border:3px dashed #a8997a;color:#6f654f;font-size:1.8rem;font-weight:800;background:rgba(255,255,255,.5)}
+.slot.filled .circle{background:#fff;box-shadow:inset 0 0 0 2px var(--line)}
+.cap{font-size:.75rem;color:var(--ink2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stamp-wrap{display:block;width:100%;height:100%;transform:rotate(var(--rot,0deg));mix-blend-mode:multiply}
+.stamp-wrap svg{display:block;width:100%;height:100%}
+.hanko{color:var(--hanko)}
+.hanko text{font-family:var(--font);font-weight:800;text-anchor:middle}
+.stamp-wrap.pop{animation:stampIn .65s cubic-bezier(.2,.9,.3,1.1) both}
+@keyframes stampIn{
+  0%{opacity:0;transform:rotate(var(--rot,0deg)) scale(2.4)}
+  55%{opacity:1;transform:rotate(var(--rot,0deg)) scale(.9)}
+  75%{transform:rotate(var(--rot,0deg)) scale(1.05)}
+  100%{opacity:1;transform:rotate(var(--rot,0deg)) scale(1)}
+}
+.slot.thump .circle::after{content:"";position:absolute;inset:0;border-radius:50%;border:3px solid var(--hanko);animation:ripple .7s ease-out .3s both;pointer-events:none}
+@keyframes ripple{0%{opacity:.7;transform:scale(.9)}100%{opacity:0;transform:scale(1.35)}}
+
+/* spots */
+.spots{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.spot{border:2px solid var(--line);border-radius:14px;padding:12px;background:#fff}
+.spot.done{background:#fdf6ee;border-color:#e2b9a8}
+.spot-head{display:flex;align-items:center;gap:10px}
+.spot-head h3{font-size:1.05rem;font-weight:800;flex:1;min-width:0;overflow-wrap:anywhere}
+.num{flex:none;width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem}
+.pill{flex:none;min-width:44px;text-align:center;padding:2px 10px;border-radius:99px;font-weight:800;font-size:.9rem;border:2px solid var(--ink)}
+.pill.done{background:var(--ok);border-color:var(--ok);color:#fff}
+.pill.todo{background:#eadfc4;color:var(--ink)}
+.place{margin-top:8px;font-weight:700;display:flex;gap:6px;align-items:flex-start}
+.place svg{flex:none;margin-top:4px}
+.hint{margin-top:4px;color:var(--ink2);font-size:.95rem;overflow-wrap:anywhere}
+.when{margin-top:8px;font-size:.9rem;color:var(--ok);font-weight:700}
+.spot .btn{margin-top:10px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 18px;border-radius:14px;border:2px solid var(--ink);
+  font:inherit;font-weight:800;font-size:1rem;cursor:pointer;text-decoration:none;text-align:center;line-height:1.3;color:var(--ink);background:var(--card);box-shadow:0 3px 0 var(--ink)}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.btn.primary{background:var(--red);color:#fff}
+.btn.accent{background:var(--mustard);color:var(--ink)}
+.btn.secondary{background:var(--card)}
+.btn[disabled]{opacity:.55;cursor:not-allowed;box-shadow:none}
+.btn.block{display:flex;width:100%}
+.btn.disabled-look{background:#e6dfcc;color:#4d4a40;border-style:dashed;box-shadow:none;cursor:not-allowed}
+.btn.small{min-height:44px;padding:6px 14px;font-size:.9rem}
+.linkbtn{background:none;border:0;font:inherit;font-size:.85rem;color:var(--ink2);text-decoration:underline;min-height:44px;padding:0 10px;cursor:pointer}
+
+/* how to */
+.how summary{cursor:pointer;font-weight:800;font-size:1.1rem;min-height:44px;display:flex;align-items:center}
+.how ol{margin:8px 0 0;padding-left:1.4rem}
+.how li{margin:6px 0}
+.how .note{font-size:.85rem;color:var(--ink2);margin-top:8px}
+
+/* mission */
+.mission.locked{background:#eee6d2;border-style:dashed;box-shadow:none}
+.mission .lockmsg{font-weight:800;font-size:1.05rem;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mission p{margin:6px 0}
+.mission ol{padding-left:1.4rem;margin:8px 0}
+.pidbox{background:#fff;border:2px dashed var(--ink);border-radius:14px;padding:12px;margin:12px 0;text-align:center}
+.pidbox .lbl{font-size:.85rem;color:var(--ink2);font-weight:700}
+.pid{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;font-weight:700;font-size:2.3rem;letter-spacing:.16em;line-height:1.3;margin:2px 0 6px;padding-left:.16em;user-select:all}
+.copystat{min-height:1.6em;font-size:.9rem;font-weight:700;color:var(--ink2);margin-top:6px}
+.stack{display:grid;gap:10px;margin-top:12px}
+.done-note{display:flex;gap:8px;align-items:center;font-weight:800;color:var(--ok)}
+
+/* completion */
+.complete{position:relative;overflow:hidden;background:var(--ink);color:#fff;border:3px solid var(--mustard);border-radius:20px;padding:22px 14px 18px;margin:14px 0 6px;text-align:center}
+.complete>:not(.confetti){position:relative;z-index:1}
+.complete h2{font-size:2.1rem;font-weight:800;color:var(--mustard);line-height:1.25;margin-bottom:8px}
+.complete .panel{background:var(--card);color:var(--ink);border-radius:14px;padding:12px;margin:12px 0;text-align:left}
+.complete .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.complete .row:last-child{border-bottom:0}
+.complete .k{font-size:.85rem;color:var(--ink2);font-weight:700}
+.complete .v{font-weight:800}
+.complete .cpid{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1.7rem;letter-spacing:.14em}
+.clockbox{text-align:center;padding-top:8px}
+.clockdate{font-size:.85rem;color:var(--ink2);font-weight:700}
+.clock{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:2.4rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.complete .show{font-size:1.15rem;font-weight:800}
+.head h1,.head .sub,.dlg-title,.complete .show,.complete h2{text-wrap:balance;word-break:auto-phrase}
+.complete .btn{margin-top:12px}
+.complete.given{background:#e6e0d2;color:#575650;border:3px dashed #a39b88}
+.complete.given h2{color:#575650;font-size:1.35rem}
+.complete.given .panel{background:#f3efe4;color:#575650}
+.complete.given .k{color:#5f5d55}
+.confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.confetti span{position:absolute;top:-24px;width:9px;height:15px;border-radius:2px;animation:fall linear infinite}
+@keyframes fall{0%{transform:translateY(0) rotate(0)}100%{transform:translateY(560px) rotate(640deg);opacity:.35}}
+
+footer{text-align:center;margin-top:18px;color:var(--ink2);font-size:.8rem}
+
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(27,42,74,.62);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50;overflow:auto}
+.dialog{background:var(--card);border:3px solid var(--ink);border-radius:20px;padding:18px;width:100%;max-width:400px;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;box-shadow:0 6px 0 var(--ink);animation:dlgIn .22s ease-out}
+.dialog:focus{outline:none}
+@keyframes dlgIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
+.dlg-title{font-size:1.2rem;font-weight:800;line-height:1.4;margin-bottom:10px;text-align:center;text-wrap:balance}
+.dlg-body p{margin:6px 0}
+.btnrow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.btnrow .btn{flex:1 1 120px}
+.form .desc{font-size:.92rem;color:var(--ink2)}
+.form .lbl{display:block;font-weight:800;margin:10px 0 4px}
+.field{width:100%;min-height:50px;font:inherit;font-size:1.15rem;padding:8px 12px;border:2px solid var(--ink);border-radius:12px;background:#fff;color:var(--ink)}
+.field:disabled{background:#eee;color:#555}
+.msg{min-height:1.6em;margin-top:8px;font-size:.92rem;font-weight:700}
+.msg.warn{color:var(--red)}
+.shake{animation:shake .45s ease-in-out}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+.celebrate{text-align:center}
+.bigstamp{width:170px;height:170px;margin:4px auto 8px}
+.celebrate .lead{font-size:1.25rem;font-weight:800;color:var(--red)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .confetti{display:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="ink-rough" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="4" result="n1"/>
+      <feDisplacementMap in="SourceGraphic" in2="n1" scale="1.8" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="9" result="n2"/>
+      <feColorMatrix in="n2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  9 0 0 0 -2.2" result="m"/>
+      <feComposite in="d" in2="m" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+<div id="page"><main id="app"></main></div>
+<div id="modal-root"></div>
+<noscript><p style="padding:16px">このページを使うには JavaScript を有効にしてください。</p></noscript>
+
+<script>
+"use strict";
+/* =====================================================================
+   設定（先生が編集する場所）
+   ここだけ書きかえれば、スタンプラリーの内容を変えられます。
+   ===================================================================== */
+const CONFIG = {
+  // ページの題名（画面の一番上に表示されます）
+  title: "大阪つくば開成高校 コース発表会スタンプラリー",
+
+  // ブラウザに記録を保存するときの名前。毎年かえると、前年の記録と混ざりません。
+  storageKey: "bunkasai-stamp-2026",
+
+  // 感想文用GoogleフォームのURL（https:// から始まるもの）。
+  // 空のままだと「フォーム準備中です」と表示されます。
+  formUrl: "",
+
+  // 景品お渡し・記録リセットのときに係員が入力する暗証番号（PIN）。必ず変更してください。
+  staffPin: "0000",
+
+  // スポット（場所）の一覧。個数は増減できます（5つ推奨）。
+  //  id      : 内部で使う名前（重複させない）
+  //  name    : スポットの名前（スタンプにも表示。短めに）
+  //  place   : 場所の説明
+  //  hint    : ヒントや説明文
+  //  keyword : 合言葉（掲示に書いておく言葉。ひらがな・カタカナどちらで入力してもOK）
+  //  token   : QRコード用の合言葉。QRコードのURLは「このページのURL#token」にします
+  //            例）https://example.com/stamp/index.html#k7m2qx
+  spots: [
+    { id: "s1", name: "新コース", place: "1号館1階", hint: "", keyword: "2027年度スタート", token: "4pcve3" },
+    { id: "s2", name: "最先端", place: "2号館5階", hint: "", keyword: "デジタル", token: "wfwnu0" },
+    { id: "s3", name: "休憩", place: "1号館5階", hint: "", keyword: "YouTube", token: "ee2fvg" },
+    { id: "s4", name: "セレクト", place: "2号館2階", hint: "", keyword: "動物心理学", token: "mx53ds" },
+    { id: "s5", name: "ステージ", place: "1号館地下1階", hint: "", keyword: "パフォーマンス", token: "l10a0s" }
+  ]
+};
+/* ===================== 設定ここまで（以下は編集不要） ===================== */
+
+const TOTAL = CONFIG.spots.length;
+const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const $ = (sel, root) => (root || document).querySelector(sel);
+
+/* ---------- 汎用ヘルパー ---------- */
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  if (props) {
+    for (const k in props) {
+      const v = props[k];
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.slice(0, 2) === "on") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+  }
+  kids.flat().forEach(c => {
+    if (c == null || c === false) return;
+    n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  });
+  return n;
+}
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in (attrs || {})) n.setAttribute(k, attrs[k]);
+  kids.forEach(c => { if (c != null) n.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return n;
+}
+const pad2 = n => String(n).padStart(2, "0");
+const fmtMD = ts => { const d = new Date(ts); return (d.getMonth() + 1) + "/" + d.getDate(); };
+const fmtHM = ts => { const d = new Date(ts); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
+const fmtHMS = d => pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+const fmtFull = ts => { const d = new Date(ts); return (d.getMonth() + 1) + "月" + d.getDate() + "日 " + fmtHM(ts); };
+const isNum = v => typeof v === "number" && isFinite(v);
+const reducedMotion = () => { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } };
+
+/* 合言葉の正規化：空白除去 → NFKC → カタカナをひらがなに → 小文字 */
+function norm(s) {
+  s = String(s == null ? "" : s).normalize("NFKC");
+  s = s.replace(/[\s\u200B-\u200D\u2060\uFEFF]+/g, "");
+  s = s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  return s.toLowerCase();
+}
+
+function genPid() {
+  try {
+    if (window.crypto && crypto.getRandomValues) {
+      const a = new Uint8Array(6);
+      crypto.getRandomValues(a);
+      let o = "";
+      for (let i = 0; i < 6; i++) o += ALPHABET[a[i] % 32];
+      return o;
+    }
+  } catch (e) { /* fall through */ }
+  let o = "";
+  for (let i = 0; i < 6; i++) o += ALPHABET[Math.floor(Math.random() * 32)];
+  return o;
+}
+
+/* ---------- 状態の読み込み／保存 ---------- */
+function probeStorage() {
+  try {
+    const k = CONFIG.storageKey + ":probe";
+    window.localStorage.setItem(k, "1");
+    window.localStorage.removeItem(k);
+    return true;
+  } catch (e) { return false; }
+}
+function freshState(pid) {
+  return { v: 1, pid: pid || genPid(), stamps: {}, submittedAt: null, prizeAt: null };
+}
+function loadState() {
+  let raw = null;
+  if (storageOk) {
+    try { raw = window.localStorage.getItem(CONFIG.storageKey); } catch (e) { storageOk = false; }
+  }
+  let s = null;
+  if (raw) { try { s = JSON.parse(raw); } catch (e) { s = null; } }
+  const okPid = s && typeof s.pid === "string" && /^[2-9A-HJ-NP-Z]{6}$/.test(s.pid);
+  const st = freshState(okPid ? s.pid : null);
+  if (s && typeof s === "object") {
+    if (s.stamps && typeof s.stamps === "object") {
+      // 設定にないID（スポットの入れ替え等）も消さずに保存しておく。数えるのは CONFIG.spots にあるものだけ。
+      Object.keys(s.stamps).forEach(id => { if (isNum(s.stamps[id])) st.stamps[id] = s.stamps[id]; });
+    }
+    // 送信・景品の記録は保持する（完了表示は「全スポット＋送信」のときだけ。isComplete 参照）
+    if (isNum(s.submittedAt)) st.submittedAt = s.submittedAt;
+    if (isNum(s.prizeAt)) st.prizeAt = s.prizeAt;
+  }
+  return st;
+}
+function save() {
+  if (!storageOk) return;
+  try { window.localStorage.setItem(CONFIG.storageKey, JSON.stringify(state)); }
+  catch (e) { storageOk = false; }
+}
+let storageOk = probeStorage();
+let state = loadState();
+save();
+
+const stampedCount = () => CONFIG.spots.filter(s => state.stamps[s.id]).length;
+const isComplete = () => TOTAL > 0 && stampedCount() === TOTAL && !!state.submittedAt;
+
+/* ---------- 失敗回数の制限（60秒に5回まちがえたら30秒ロック） ---------- */
+const attempts = {};
+function lockLeft(key) {
+  const a = attempts[key];
+  return a ? Math.max(0, Math.ceil((a.lockUntil - Date.now()) / 1000)) : 0;
+}
+function failAttempt(key) {
+  const a = attempts[key] || (attempts[key] = { fails: [], lockUntil: 0 });
+  const now = Date.now();
+  a.fails = a.fails.filter(t => now - t < 60000);
+  a.fails.push(now);
+  if (a.fails.length >= 5) { a.lockUntil = now + 30000; a.fails = []; return true; }
+  return false;
+}
+
+/* ---------- ハンコのSVG ---------- */
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+function rng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const stampAngle = spot => (hashStr(String(spot.id) + "rot") % 25) - 12;
+
+function stampNode(spot, idx, ts) {
+  const r = rng(hashStr(String(spot.id) + "edge"));
+  const N = 72;
+  let d = "";
+  for (let i = 0; i < N; i++) {
+    const a = i / N * Math.PI * 2;
+    const rad = 45 + (r() - 0.5) * 1.8 + Math.sin(a * 3 + idx) * 0.5;
+    d += (i ? "L" : "M") + (50 + Math.cos(a) * rad).toFixed(2) + " " + (50 + Math.sin(a) * rad).toFixed(2);
+  }
+  d += "Z";
+  const chars = Array.from(String(spot.name)).slice(0, 8);
+  const fs = Math.max(8.5, Math.min(17, Math.floor(66 / chars.length * 10) / 10));
+  const svg = svgEl("svg", { viewBox: "0 0 100 100", class: "hanko", "aria-hidden": "true", focusable: "false" },
+    svgEl("g", { filter: "url(#ink-rough)", fill: "currentColor", stroke: "none" },
+      svgEl("path", { d: d, fill: "none", stroke: "currentColor", "stroke-width": "3.4", "stroke-linejoin": "round" }),
+      svgEl("circle", { cx: 50, cy: 50, r: 39.5, fill: "none", stroke: "currentColor", "stroke-width": "1.3" }),
+      svgEl("text", { x: 50, y: 40, "font-size": 24 }, String(idx + 1)),
+      svgEl("text", { x: 50, y: 57, "font-size": fs }, chars.join("")),
+      svgEl("rect", { x: 28, y: 63, width: 44, height: 1.4 }),
+      svgEl("text", { x: 50, y: 77, "font-size": 11 }, fmtMD(ts))
+    )
+  );
+  const wrap = el("span", { class: "stamp-wrap", style: "--rot:" + stampAngle(spot) + "deg" });
+  wrap.append(svg);
+  return wrap;
+}
+
+/* ---------- モーダル ---------- */
+let currentModal = null;
+let modalSeq = 0;
+function focusables(root) {
+  return Array.from(root.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'))
+    .filter(n => !n.disabled && n.offsetParent !== null);
+}
+function setInert(on) {
+  const pg = $("#page");
+  if (on) { pg.setAttribute("aria-hidden", "true"); try { pg.inert = true; } catch (e) {} }
+  else { pg.removeAttribute("aria-hidden"); try { pg.inert = false; } catch (e) {} }
+  document.body.classList.toggle("modal-open", on);
+}
+function focusTo(n) { if (!n) return; try { n.focus({ preventScroll: true }); } catch (e) { n.focus(); } }
+function focusFallback() {
+  focusTo($("#complete-title") || $("[data-open-spot]") || $("#main-title"));
+}
+function restoreFocus(prev) {
+  if (prev && prev !== document.body && prev.isConnected && typeof prev.focus === "function") focusTo(prev);
+  else if (!prev || prev === document.body || !prev.isConnected) focusFallback();
+}
+/* o: {title, content, buttons:[{label,kind,onClick}], initialFocus, onClose, className} */
+function openModal(o) {
+  const prev = currentModal ? currentModal.prevFocus : document.activeElement;
+  if (currentModal) currentModal.close({ restore: false });
+  const id = "dlg" + (++modalSeq);
+  const dlg = el("div", { class: "dialog" + (o.className ? " " + o.className : ""), role: "dialog", "aria-modal": "true",
+    "aria-labelledby": id + "-t", tabindex: "-1" },
+    el("h2", { id: id + "-t", class: "dlg-title", text: o.title }),
+    el("div", { class: "dlg-body" }, o.content));
+  const backdrop = el("div", { class: "backdrop" }, dlg);
+  let closed = false;
+  const handle = {
+    el: dlg, prevFocus: prev,
+    close(opts) {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener("keydown", onKey, true);
+      backdrop.remove();
+      if (currentModal === handle) { currentModal = null; setInert(false); }
+      if (!(opts && opts.restore === false)) restoreFocus(prev);
+      if (o.onClose) o.onClose();
+    }
+  };
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); handle.close(); return; }
+    if (e.key !== "Tab") return;
+    const f = focusables(dlg);
+    if (!f.length) { e.preventDefault(); dlg.focus(); return; }
+    const first = f[0], last = f[f.length - 1], a = document.activeElement;
+    if (!dlg.contains(a) || (a === dlg && e.shiftKey)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+  }
+  let firstBtn = null;
+  if (o.buttons && o.buttons.length) {
+    const row = el("div", { class: "btnrow" });
+    o.buttons.forEach(b => {
+      const btn = el("button", { type: "button", class: "btn " + (b.kind || "secondary"), text: b.label });
+      btn.addEventListener("click", () => {
+        const keep = b.onClick ? b.onClick(handle) : undefined;
+        if (keep !== false) handle.close();
+      });
+      if (!firstBtn) firstBtn = btn;
+      row.append(btn);
+    });
+    dlg.append(row);
+  }
+  backdrop.addEventListener("mousedown", e => { if (e.target === backdrop) handle.close(); });
+  currentModal = handle;
+  $("#modal-root").append(backdrop);
+  setInert(true);
+  document.addEventListener("keydown", onKey, true);
+  (o.initialFocus || firstBtn || dlg).focus();
+  return handle;
+}
+
+/* 入力つきモーダル（合言葉・PIN共通） */
+function shake(node) {
+  node.classList.remove("shake");
+  void node.offsetWidth;
+  node.classList.add("shake");
+  node.addEventListener("animationend", () => node.classList.remove("shake"), { once: true });
+}
+function inputModal(cfg) {
+  const input = el("input", { class: "field", id: "inp" + (++modalSeq), type: cfg.type || "text", autocomplete: "off",
+    autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  if (cfg.inputmode) input.setAttribute("inputmode", cfg.inputmode);
+  const msg = el("p", { class: "msg", role: "status", "aria-live": "polite" });
+  const submit = el("button", { type: "submit", class: "btn primary", text: cfg.submitLabel || "決定" });
+  const cancel = el("button", { type: "button", class: "btn secondary", text: "閉じる" });
+  const form = el("form", { class: "form", novalidate: true },
+    cfg.desc ? el("p", { class: "desc", text: cfg.desc }) : null,
+    el("label", { class: "lbl", for: input.id, text: cfg.label }),
+    input, msg,
+    el("div", { class: "btnrow" }, cancel, submit));
+  let timer = null;
+  const handle = openModal({ title: cfg.title, content: form, initialFocus: input, onClose: () => clearInterval(timer) });
+  cancel.addEventListener("click", () => handle.close());
+  function refreshLock() {
+    const left = lockLeft(cfg.lockKey);
+    if (left > 0) {
+      input.disabled = true; submit.disabled = true;
+      msg.className = "msg warn";
+      msg.textContent = "まちがいが続いたので、いったん入力できません。あと" + left + "秒お待ちください。";
+      return true;
+    }
+    if (input.disabled) {
+      input.disabled = false; submit.disabled = false;
+      msg.className = "msg"; msg.textContent = "";
+      input.value = ""; input.focus();
+    }
+    return false;
+  }
+  // IME変換中の Enter（確定）で送信しない（Safari は確定後に keyCode 229 の keydown が来る）
+  let composing = false;
+  input.addEventListener("compositionstart", () => { composing = true; });
+  input.addEventListener("compositionend", () => { composing = false; });
+  input.addEventListener("blur", () => { composing = false; });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.isComposing || composing || e.keyCode === 229)) {
+      e.preventDefault(); e.stopPropagation();
+    }
+  });
+  timer = setInterval(() => { if (!form.isConnected) clearInterval(timer); else refreshLock(); }, 500);
+  refreshLock();
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    if (refreshLock()) return;
+    const v = input.value;
+    if (!v.trim()) { msg.className = "msg warn"; msg.textContent = "入力してください"; input.focus(); return; }
+    if (composing) return;
+    if (cfg.check(v)) { cfg.onSuccess(handle); return; }
+    const locked = failAttempt(cfg.lockKey);
+    shake(input);
+    if (locked) refreshLock();
+    else { msg.className = "msg warn"; msg.textContent = cfg.wrongMsg; input.select(); }
+  });
+  return handle;
+}
+
+/* ---------- スタンプ処理 ---------- */
+function clearHash() {
+  try { history.replaceState(null, "", location.href.split("#")[0]); } catch (e) { /* 無視 */ }
+}
+function acquire(spot) {
+  if (state.stamps[spot.id]) { showAlready(spot); return; }
+  state.stamps[spot.id] = Date.now();
+  save();
+  render();
+  showCelebrate(spot);
+}
+function handleHash() {
+  let h = "";
+  try { h = location.hash || ""; } catch (e) { return; }
+  if (h.length < 2) return;
+  let tok = h.slice(1);
+  try { tok = decodeURIComponent(tok); } catch (e) { /* そのまま */ }
+  tok = tok.trim().toLowerCase();
+  const spot = CONFIG.spots.find(s => s.token != null && String(s.token).trim() !== "" && tok === String(s.token).trim().toLowerCase());
+  if (!spot) return;
+  clearHash();
+  acquire(spot);
+}
+function showCelebrate(spot) {
+  const idx = CONFIG.spots.indexOf(spot);
+  const n = stampedCount();
+  const all = n === TOTAL;
+  const stamp = stampNode(spot, idx, state.stamps[spot.id]);
+  stamp.classList.add("pop");
+  const content = el("div", { class: "celebrate" },
+    el("div", { class: "bigstamp" }, stamp),
+    el("p", { class: "lead", text: "これで " + n + " / " + TOTAL }),
+    el("p", { text: all ? "全部そろいました！ 最終ミッション「感想文」に進もう。" : "あと" + (TOTAL - n) + "つ。がんばって！" }));
+  openModal({
+    title: spot.name + "のスタンプをゲット！", content,
+    buttons: [{ label: all ? "最終ミッションへ" : "閉じる", kind: "primary" }],
+    onClose: () => {
+      const slot = Array.from(document.querySelectorAll("[data-slot]")).find(n => n.getAttribute("data-slot") === String(spot.id));
+      if (slot) {
+        slot.classList.add("thump");
+        const w = slot.querySelector(".stamp-wrap");
+        if (w) w.classList.add("pop");
+      }
+      if (all) {
+        const f = $("#final");
+        if (f) { try { f.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" }); } catch (e) {} }
+      }
+    }
+  });
+}
+function showAlready(spot) {
+  const ts = state.stamps[spot.id];
+  openModal({
+    title: "このスタンプはもう押してあります",
+    content: el("p", { text: spot.name + "のスタンプは、" + fmtMD(ts) + " " + fmtHM(ts) + " に押してあります。次のスポットへ行こう！" }),
+    buttons: [{ label: "閉じる", kind: "primary" }]
+  });
+}
+function openWordModal(spot) {
+  inputModal({
+    title: spot.name + "の合言葉",
+    desc: "スポットに掲示されている合言葉を入力してね。ひらがな・カタカナどちらでもOKです。",
+    label: "合言葉", lockKey: "spot:" + spot.id, submitLabel: "スタンプを押す",
+    wrongMsg: "合言葉がちがうようです。掲示をもう一度確認してね",
+    check: v => norm(v) === norm(spot.keyword),
+    onSuccess: () => acquire(spot)
+  });
+}
+
+/* ---------- 係員用（PIN） ---------- */
+function askPin(purpose) {
+  const prize = purpose === "prize";
+  inputModal({
+    title: prize ? "係員用：景品のお渡し" : "係員用：記録のリセット",
+    desc: prize ? "係員がPINを入力します。押すと元に戻せません。参加者は押さないでください。"
+                : "この端末のスタンプ・感想文の記録をすべて消して、新しい参加番号にします。",
+    label: "係員PIN（数字）", type: "password", inputmode: "numeric", lockKey: "pin",
+    submitLabel: prize ? "お渡し済みにする" : "リセットする",
+    wrongMsg: "PINがちがいます",
+    check: v => v.normalize("NFKC").trim() === String(CONFIG.staffPin),
+    onSuccess: h => {
+      if (prize) { state.prizeAt = Date.now(); }
+      else { state = freshState(); }
+      save();
+      h.close({ restore: false });
+      render();
+      window.scrollTo(0, 0);
+      focusFallback();
+    }
+  });
+}
+
+/* ---------- 画面の描画 ---------- */
+let howOpen = stampedCount() === 0;
+
+function pinIcon() {
+  return svgEl("svg", { width: 16, height: 16, viewBox: "0 0 24 24", "aria-hidden": "true", fill: "none", stroke: "currentColor", "stroke-width": 2.2 },
+    svgEl("path", { d: "M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" }), svgEl("circle", { cx: 12, cy: 10, r: 2.5 }));
+}
+function lockIcon() {
+  return svgEl("svg", { width: 24, height: 24, viewBox: "0 0 24 24", "aria-hidden": "true", fill: "none", stroke: "currentColor", "stroke-width": 2.2, "stroke-linecap": "round" },
+    svgEl("rect", { x: 5, y: 11, width: 14, height: 10, rx: 2, fill: "currentColor" }), svgEl("path", { d: "M8 11V8a4 4 0 0 1 8 0v3" }));
+}
+function bunting() {
+  const colors = ["#b32a17", "#f0b429", "#1b2a4a", "#fffaf0"];
+  const svg = svgEl("svg", { viewBox: "0 0 520 30", preserveAspectRatio: "xMidYMin slice", class: "bunting", "aria-hidden": "true", focusable: "false" });
+  svg.append(svgEl("path", { d: "M0 4 Q260 24 520 4", fill: "none", stroke: "#1b2a4a", "stroke-width": 2 }));
+  for (let i = 0; i < 14; i++) {
+    const x = i * 40 + 5, t = x / 520;
+    const y = 4 + 40 * t * (1 - t); // 曲線に沿わせる
+    svg.append(svgEl("polygon", { points: (x - 14) + "," + y.toFixed(1) + " " + (x + 14) + "," + y.toFixed(1) + " " + x + "," + (y + 15).toFixed(1),
+      fill: colors[i % 4], stroke: "#1b2a4a", "stroke-width": 1.5, "stroke-linejoin": "round" }));
+  }
+  return svg;
+}
+
+function renderHeader() {
+  const n = stampedCount();
+  const pct = TOTAL ? Math.round(n / TOTAL * 100) : 0;
+  return el("header", { class: "card head" },
+    bunting(),
+    el("h1", { id: "main-title", tabindex: "-1", text: CONFIG.title }),
+    el("p", { class: "sub", text: TOTAL + "つのスポットをまわって、スタンプを集めよう！" }),
+    el("div", { class: "prog" },
+      el("div", { class: "count", "aria-label": "進み具合 " + TOTAL + "つ中" + n + "つ" }, n + " / " + TOTAL, el("span", { text: "あつまった" })),
+      el("div", { class: "bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(TOTAL), "aria-valuenow": String(n), "aria-label": "スタンプの進み具合" },
+        el("i", { style: "width:" + pct + "%" }))));
+}
+function renderSlots() {
+  const ul = el("ol", { class: "slots", "aria-label": "スタンプカード" });
+  CONFIG.spots.forEach((sp, i) => {
+    const ts = state.stamps[sp.id];
+    const li = el("li", { class: "slot " + (ts ? "filled" : "empty"), "data-slot": sp.id,
+      "aria-label": (i + 1) + "番 " + sp.name + (ts ? " スタンプ済み" : " まだ") },
+      el("div", { class: "circle", "aria-hidden": "true" }, ts ? stampNode(sp, i, ts) : String(i + 1)),
+      el("div", { class: "cap", "aria-hidden": "true", text: sp.name }));
+    ul.append(li);
+  });
+  return el("section", { class: "card", "aria-labelledby": "card-h" }, el("h2", { id: "card-h", text: "スタンプカード" }), ul);
+}
+function renderSpots() {
+  const ul = el("ul", { class: "spots" });
+  CONFIG.spots.forEach((sp, i) => {
+    const ts = state.stamps[sp.id];
+    ul.append(el("li", { class: "spot" + (ts ? " done" : "") },
+      el("div", { class: "spot-head" },
+        el("span", { class: "num", "aria-hidden": "true", text: String(i + 1) }),
+        el("h3", { text: sp.name }),
+        el("span", { class: "pill " + (ts ? "done" : "todo") }, ts ? "済" : "未", el("span", { class: "sr", text: ts ? "（スタンプ済み）" : "（まだ）" }))),
+      el("p", { class: "place" }, pinIcon(), el("span", { text: "場所：" + sp.place })),
+      sp.hint ? el("p", { class: "hint", text: sp.hint }) : null,
+      ts ? el("p", { class: "when", text: fmtMD(ts) + " " + fmtHM(ts) + " にスタンプをゲット" })
+         : el("button", { type: "button", class: "btn secondary", "data-open-spot": sp.id, onclick: () => openWordModal(sp), text: "合言葉を入力" })));
+  });
+  return el("section", { class: "card", "aria-labelledby": "spots-h" }, el("h2", { id: "spots-h", text: "スポット一覧" }), ul);
+}
+function renderHow() {
+  const d = el("details", { class: "card how" },
+    el("summary", { text: "あそびかた" }),
+    el("ol", null,
+      el("li", { text: "各スポットのQRコードをスマホで読み取るか、掲示された「合言葉」を入力するとスタンプが押されます。" }),
+      el("li", { text: TOTAL + "つ集めたら、最終ミッション「感想文」を書いて送ろう。" }),
+      el("li", { text: "感想文を送ったら、受付で完了画面を見せてね。" })),
+    el("p", { class: "note", text: "記録はこの端末のこのブラウザに残ります。同じスマホ・同じブラウザで使ってください。" }));
+  d.open = howOpen;
+  d.addEventListener("toggle", () => { howOpen = d.open; });
+  return d;
+}
+function copyPid(statusEl) {
+  const done = ok => { statusEl.textContent = ok ? "コピーしました" : "コピーできませんでした。手で入力してください"; };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(state.pid).then(() => done(true), () => done(false));
+    } else done(false);
+  } catch (e) { done(false); }
+}
+function confirmSubmit() {
+  openModal({
+    title: "本当に送信しましたか？",
+    content: el("p", { text: "Googleフォームで感想文を送信したあとに「送信しました」を押してください。まだなら、先にフォームを送ってね。" }),
+    buttons: [
+      { label: "まだ送っていない", kind: "secondary" },
+      { label: "送信しました", kind: "primary", onClick: h => {
+          state.submittedAt = Date.now(); save();
+          h.close({ restore: false });
+          render(); window.scrollTo(0, 0); focusFallback();
+          return false;
+      } }
+    ]
+  });
+}
+function renderMission() {
+  const unlocked = stampedCount() >= TOTAL;
+  const sec = el("section", { class: "card mission" + (unlocked ? "" : " locked"), id: "final", "aria-labelledby": "final-h" });
+  sec.append(el("h2", { id: "final-h", text: "最終ミッション：感想文" }));
+  if (!unlocked) {
+    sec.append(
+      el("p", { class: "lockmsg" }, lockIcon(), el("span", { text: TOTAL + "つ集めると開きます" })),
+      el("p", { text: "コース発表会の感想をGoogleフォームに書いて送るミッションです。あと" + (TOTAL - stampedCount()) + "つ！" }));
+    return sec;
+  }
+  const pidbox = el("div", { class: "pidbox" },
+    el("div", { class: "lbl", text: "あなたの参加番号" }),
+    el("div", { class: "pid", text: state.pid }));
+  if (state.submittedAt) {
+    sec.append(pidbox, el("p", { class: "done-note", text: "感想文の送信を記録しました（" + fmtFull(state.submittedAt) + "）" }),
+      el("p", { text: "上の「コンプリート！」画面を受付で見せてください。" }));
+    return sec;
+  }
+  const stat = el("p", { class: "copystat", role: "status", "aria-live": "polite" });
+  pidbox.append(el("button", { type: "button", class: "btn secondary small", text: "参加番号をコピー", onclick: () => copyPid(stat) }), stat);
+  const url = String(CONFIG.formUrl || "").trim();
+  const link = /^https?:\/\//i.test(url)
+    ? el("a", { class: "btn accent block", href: url, target: "_blank", rel: "noopener", text: "感想文を書く（Googleフォーム）" })
+    : el("div", { class: "btn disabled-look block", "aria-disabled": "true", text: "フォーム準備中です。係の人に聞いてください" });
+  sec.append(
+    el("p", { text: "おめでとう！ 最後に、コース発表会の感想文を書いてください。" }),
+    pidbox,
+    el("p", { text: "フォームに参加番号を書いてください。" }),
+    el("div", { class: "stack" },
+      link,
+      link.tagName === "A" ? el("p", { class: "copystat", text: "リンクは新しいタブで開きます。書き終わったらこの画面にもどってね。" }) : null,
+      el("button", { type: "button", class: "btn primary block", text: "感想文を送信しました", onclick: confirmSubmit })));
+  return sec;
+}
+function renderComplete() {
+  const given = !!state.prizeAt;
+  const sec = el("section", { class: "complete" + (given ? " given" : ""), "aria-labelledby": "complete-title" });
+  if (!given) {
+    const cols = ["#f0b429", "#d63a21", "#fffaf0", "#7fb4ff", "#ff9bb0"];
+    const cf = el("div", { class: "confetti", "aria-hidden": "true" });
+    for (let i = 0; i < 28; i++) {
+      cf.append(el("span", { style: "left:" + ((i * 37) % 100) + "%;background:" + cols[i % cols.length] +
+        ";animation-duration:" + (3 + (i % 5) * 0.6) + "s;animation-delay:-" + ((i % 7) * 0.7) + "s" }));
+    }
+    sec.append(cf);
+  }
+  sec.append(el("h2", { id: "complete-title", tabindex: "-1", text: given ? "景品お渡し済み（" + fmtHM(state.prizeAt) + "）" : "コンプリート！" }));
+  sec.append(el("div", { class: "panel" },
+    el("div", { class: "row" }, el("span", { class: "k", text: "参加番号" }), el("span", { class: "v cpid", text: state.pid })),
+    el("div", { class: "row" }, el("span", { class: "k", text: "完了日時" }), el("span", { class: "v", text: fmtFull(state.submittedAt) })),
+    el("div", { class: "clockbox" },
+      el("div", { class: "clockdate", "data-clockdate": "1" }),
+      el("div", { class: "clock", role: "timer", "data-clock": "1" }))));
+  sec.append(el("p", { class: "show", text: given ? "景品はお渡し済みです" : "受付でこの画面を見せてください" }));
+  if (!given) sec.append(el("button", { type: "button", class: "btn accent small", text: "係員用：景品お渡し済みにする", onclick: () => askPin("prize") }));
+  return sec;
+}
+function tickClock() {
+  const d = new Date();
+  document.querySelectorAll("[data-clock]").forEach(n => { n.textContent = fmtHMS(d); });
+  document.querySelectorAll("[data-clockdate]").forEach(n => { n.textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日"; });
+}
+function render() {
+  const app = $("#app");
+  app.textContent = "";
+  document.title = CONFIG.title;
+  if (!storageOk) {
+    app.append(el("div", { class: "warn-banner", role: "alert", text: "この端末では記録を保存できません。画面を閉じるとスタンプが消えます（シークレットモードは使わないでください）" }));
+  }
+  if (isComplete()) app.append(renderComplete());
+  app.append(renderHeader(), renderSlots(), renderSpots(), renderHow(), renderMission(),
+    el("footer", null,
+      el("button", { type: "button", class: "linkbtn", text: "係員用：記録をリセット", onclick: () => askPin("reset") }),
+      el("p", { text: CONFIG.title })));
+  tickClock();
+}
+
+/* ---------- 起動 ---------- */
+render();
+setInterval(tickClock, 1000);
+window.addEventListener("hashchange", handleHash);
+// 別タブ（QRを読み直して開いたタブ等）で記録が変わったら反映する
+window.addEventListener("storage", e => {
+  if (e.key !== CONFIG.storageKey || !storageOk) return;
+  state = loadState();
+  render();
+});
+handleHash();
+</script>
+</body>
+</html>
