@@ -287,7 +287,7 @@ function probeStorage() {
   } catch (e) { return false; }
 }
 function freshState(pid) {
-  return { v: 1, pid: pid || genPid(), stamps: {}, submittedAt: null, prizeAt: null };
+  return { v: 1, pid: pid || genPid(), stamps: {}, submittedAt: null, prizeAt: null, earlyOpenAt: null };
 }
 function loadState() {
   let raw = null;
@@ -306,6 +306,7 @@ function loadState() {
     // 送信・景品の記録は保持する（完了表示は「全スポット＋送信」のときだけ。isComplete 参照）
     if (isNum(s.submittedAt)) st.submittedAt = s.submittedAt;
     if (isNum(s.prizeAt)) st.prizeAt = s.prizeAt;
+    if (isNum(s.earlyOpenAt)) st.earlyOpenAt = s.earlyOpenAt;
   }
   return st;
 }
@@ -320,6 +321,10 @@ save();
 
 const stampedCount = () => CONFIG.spots.filter(s => state.stamps[s.id]).length;
 const isComplete = () => TOTAL > 0 && stampedCount() === TOTAL && !!state.submittedAt;
+// 感想文が開いているか：全部そろったら自動、1つ以上なら本人が「先に書く」を押したとき
+const missionOpen = () => stampedCount() >= TOTAL || (stampedCount() >= 1 && !!state.earlyOpenAt);
+// 完了日時：感想文の送信と、最後のスタンプのうち遅いほう
+const completedAt = () => Math.max(state.submittedAt || 0, ...CONFIG.spots.map(s => state.stamps[s.id] || 0));
 
 /* ---------- 失敗回数の制限（60秒に5回まちがえたら30秒ロック） ---------- */
 const attempts = {};
@@ -554,10 +559,10 @@ function showCelebrate(spot) {
   const content = el("div", { class: "celebrate" },
     el("div", { class: "bigstamp" }, stamp),
     el("p", { class: "lead", text: "これで " + n + " / " + TOTAL }),
-    el("p", { text: all ? "全部そろいました！ 最終ミッション「感想文」に進もう。" : "あと" + (TOTAL - n) + "つ。がんばって！" }));
+    el("p", { text: all ? (state.submittedAt ? "全部そろいました！ 感想文も送信済みなので、コンプリートです！" : "全部そろいました！ 最終ミッション「感想文」に進もう。") : "あと" + (TOTAL - n) + "つ。がんばって！" }));
   openModal({
     title: spot.name + "のスタンプをゲット！", content,
-    buttons: [{ label: all ? "最終ミッションへ" : "閉じる", kind: "primary" }],
+    buttons: [{ label: all ? (state.submittedAt ? "コンプリート画面へ" : "最終ミッションへ") : "閉じる", kind: "primary" }],
     onClose: () => {
       const slot = Array.from(document.querySelectorAll("[data-slot]")).find(n => n.getAttribute("data-slot") === String(spot.id));
       if (slot) {
@@ -566,7 +571,7 @@ function showCelebrate(spot) {
         if (w) w.classList.add("pop");
       }
       if (all) {
-        const f = $("#final");
+        const f = state.submittedAt ? $(".complete") : $("#final");
         if (f) { try { f.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" }); } catch (e) {} }
       }
     }
@@ -683,7 +688,7 @@ function renderHow() {
     el("summary", { text: "あそびかた" }),
     el("ol", null,
       el("li", { text: "各スポットのQRコードをスマホで読み取るか、掲示された「合言葉」を入力するとスタンプが押されます。" }),
-      el("li", { text: TOTAL + "つ集めたら、最終ミッション「感想文」を書いて送ろう。" }),
+      el("li", { text: TOTAL + "つ集めたら、最終ミッション「感想文」を書いて送ろう（1つ以上集めれば、先に書くこともできます）。" }),
       el("li", { text: "感想文を送ったら、受付で完了画面を見せてね。" })),
     el("p", { class: "note", text: "記録はこの端末のこのブラウザに残ります。同じスマホ・同じブラウザで使ってください。" }));
   d.open = howOpen;
@@ -707,20 +712,35 @@ function confirmSubmit() {
       { label: "送信しました", kind: "primary", onClick: h => {
           state.submittedAt = Date.now(); save();
           h.close({ restore: false });
-          render(); window.scrollTo(0, 0); focusFallback();
+          render();
+          if (isComplete()) { window.scrollTo(0, 0); focusFallback(); }
+          else { const f = $("#final"); if (f) { try { f.scrollIntoView({ block: "start" }); } catch (e) {} } }
           return false;
       } }
     ]
   });
 }
 function renderMission() {
-  const unlocked = stampedCount() >= TOTAL;
+  const unlocked = missionOpen();
+  const cnt = stampedCount();
+  const early = cnt < TOTAL;
   const sec = el("section", { class: "card mission" + (unlocked ? "" : " locked"), id: "final", "aria-labelledby": "final-h" });
   sec.append(el("h2", { id: "final-h", text: "最終ミッション：感想文" }));
   if (!unlocked) {
     sec.append(
       el("p", { class: "lockmsg" }, lockIcon(), el("span", { text: TOTAL + "つ集めると開きます" })),
-      el("p", { text: "コース発表会の感想をGoogleフォームに書いて送るミッションです。あと" + (TOTAL - stampedCount()) + "つ！" }));
+      el("p", { text: "コース発表会の感想をGoogleフォームに書いて送るミッションです。あと" + (TOTAL - cnt) + "つ！" }));
+    if (cnt >= 1) {
+      sec.append(
+        el("p", { text: "スタンプが全部そろう前に、先に感想文を書くこともできます（任意）。" }),
+        el("button", { type: "button", class: "btn secondary block", text: "今すぐ感想文を書く", onclick: () => {
+          state.earlyOpenAt = Date.now(); save(); render();
+          const h = $("#final-h");
+          if (h) { h.setAttribute("tabindex", "-1"); try { h.focus({ preventScroll: true }); h.scrollIntoView({ block: "start" }); } catch (e) {} }
+        } }));
+    } else {
+      sec.append(el("p", { class: "copystat", text: "スタンプを1つ集めると、先に書くこともできます。" }));
+    }
     return sec;
   }
   const pidbox = el("div", { class: "pidbox" },
@@ -728,7 +748,7 @@ function renderMission() {
     el("div", { class: "pid", text: state.pid }));
   if (state.submittedAt) {
     sec.append(pidbox, el("p", { class: "done-note", text: "感想文の送信を記録しました（" + fmtFull(state.submittedAt) + "）" }),
-      el("p", { text: "上の「コンプリート！」画面を受付で見せてください。" }));
+      el("p", { text: early ? "あとはスタンプを集めるだけ！ 残り" + (TOTAL - cnt) + "つそろうとコンプリートです。" : "上の「コンプリート！」画面を受付で見せてください。" }));
     return sec;
   }
   const stat = el("p", { class: "copystat", role: "status", "aria-live": "polite" });
@@ -738,7 +758,7 @@ function renderMission() {
     ? el("a", { class: "btn accent block", href: url, target: "_blank", rel: "noopener", text: "感想文を書く（Googleフォーム）" })
     : el("div", { class: "btn disabled-look block", "aria-disabled": "true", text: "フォーム準備中です。係の人に聞いてください" });
   sec.append(
-    el("p", { text: "おめでとう！ 最後に、コース発表会の感想文を書いてください。" }),
+    el("p", { text: early ? "コース発表会の感想文を書いてください。スタンプはあとから集めても大丈夫です（コンプリートには" + TOTAL + "つ全部必要です）。" : "おめでとう！ 最後に、コース発表会の感想文を書いてください。" }),
     pidbox,
     el("p", { text: "フォームに参加番号を書いてください。" }),
     el("div", { class: "stack" },
@@ -762,7 +782,7 @@ function renderComplete() {
   sec.append(el("h2", { id: "complete-title", tabindex: "-1", text: given ? "景品お渡し済み（" + fmtHM(state.prizeAt) + "）" : "コンプリート！" }));
   sec.append(el("div", { class: "panel" },
     el("div", { class: "row" }, el("span", { class: "k", text: "参加番号" }), el("span", { class: "v cpid", text: state.pid })),
-    el("div", { class: "row" }, el("span", { class: "k", text: "完了日時" }), el("span", { class: "v", text: fmtFull(state.submittedAt) })),
+    el("div", { class: "row" }, el("span", { class: "k", text: "完了日時" }), el("span", { class: "v", text: fmtFull(completedAt()) })),
     el("div", { class: "clockbox" },
       el("div", { class: "clockdate", "data-clockdate": "1" }),
       el("div", { class: "clock", role: "timer", "data-clock": "1" }))));
