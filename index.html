@@ -93,6 +93,10 @@ h1:focus,h2:focus{outline:none;box-shadow:none}
 
 /* how to */
 .how summary{cursor:pointer;font-weight:800;font-size:1.1rem;min-height:44px;display:flex;align-items:center}
+.how summary{list-style:none;justify-content:space-between;gap:8px}
+.how summary::-webkit-details-marker{display:none}
+.how summary::after{content:"タップで開く ▼";font-size:.85rem;font-weight:700;color:var(--ink2);white-space:nowrap}
+.how[open] summary::after{content:"閉じる ▲"}
 .how ol{margin:8px 0 0;padding-left:1.4rem}
 .how li{margin:6px 0}
 .how .note{font-size:.85rem;color:var(--ink2);margin-top:8px}
@@ -620,7 +624,7 @@ function askPin(purpose) {
 }
 
 /* ---------- 画面の描画 ---------- */
-let howOpen = stampedCount() === 0;
+let howOpen = false; // あそびかたは最初は閉じておく
 
 function pinIcon() {
   return svgEl("svg", { width: 16, height: 16, viewBox: "0 0 24 24", "aria-hidden": "true", fill: "none", stroke: "currentColor", "stroke-width": 2.2 },
@@ -803,7 +807,7 @@ function render() {
     app.append(el("div", { class: "warn-banner", role: "alert", text: "この端末では記録を保存できません。画面を閉じるとスタンプが消えます（シークレットモードは使わないでください）" }));
   }
   if (isComplete()) app.append(renderComplete());
-  app.append(renderHeader(), renderSlots(), renderSpots(), renderHow(), renderMission(),
+  app.append(renderHeader(), renderHow(), renderSlots(), renderSpots(), renderMission(),
     el("footer", null,
       el("button", { type: "button", class: "linkbtn", text: "係員用：記録をリセット", onclick: () => askPin("reset") }),
       el("p", { text: CONFIG.title })));
