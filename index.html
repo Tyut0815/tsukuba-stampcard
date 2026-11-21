@@ -680,17 +680,45 @@ function openScanner() {
     acquire(spot, false);
     return true;
   }
-  function tick() {
-    if (done) return;
-    if (video.readyState >= 2 && video.videoWidth) {
-      const w = video.videoWidth, hh = video.videoHeight;
-      const sc = Math.min(1, 720 / Math.max(w, hh));
-      canvas.width = Math.round(w * sc); canvas.height = Math.round(hh * sc);
-      try { ctx.drawImage(video, 0, 0, canvas.width, canvas.height); } catch (e) {}
-      const d = decodeQR(ctx, canvas.width, canvas.height, false);
-      if (d && found(d)) return;
+  // 端末の読み取り機能（Android の Chrome など）があれば使う
+  let detector = null;
+  try {
+    if ("BarcodeDetector" in window) {
+      window.BarcodeDetector.getSupportedFormats().then(f => {
+        if (f && f.indexOf("qr_code") >= 0) detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      }).catch(() => {});
     }
-    timer = setTimeout(tick, 150);
+  } catch (e) { detector = null; }
+  let frame = 0, busy = false;
+  async function tick() {
+    if (done || busy) return;
+    busy = true;
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        frame++;
+        const w = video.videoWidth, hh = video.videoHeight;
+        // 1) 端末の読み取り機能
+        if (detector) {
+          try {
+            const r = await detector.detect(video);
+            if (done) return;
+            if (r && r.length) { for (const c of r) { if (c.rawValue && found(c.rawValue)) return; } }
+          } catch (e) { detector = null; }
+        }
+        // 2) 画面の枠の中を切り出して、等倍に近い解像度で読む
+        //    （表示は object-fit:cover なので、見えている正方形の中心部分を使う）
+        const side = Math.min(w, hh);
+        const frac = (frame % 3 === 2) ? 1 : 0.72;      // ときどき全体も読む
+        const cs = Math.round(side * frac);
+        const sx = Math.round((w - cs) / 2), sy = Math.round((hh - cs) / 2);
+        const out = Math.min(cs, 800);
+        canvas.width = out; canvas.height = out;
+        try { ctx.drawImage(video, sx, sy, cs, cs, 0, 0, out, out); } catch (e) {}
+        const d = decodeQR(ctx, out, out, frame % 4 === 3);  // ときどき白黒反転も試す
+        if (d && found(d)) return;
+      }
+    } finally { busy = false; }
+    if (!done) timer = setTimeout(tick, 120);
   }
   fileIn.addEventListener("change", () => {
     const f = fileIn.files && fileIn.files[0];
@@ -722,11 +750,23 @@ function openScanner() {
     warn("この画面ではカメラが使えません。写真を撮るか、合言葉を入力してね");
     return;
   }
-  md.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false }).then(s => {
+  md.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }).then(s => {
     if (done) { s.getTracks().forEach(t => t.stop()); return; }
     stream = s; video.srcObject = s;
+    // 対応している端末ではピントを自動で合わせ続ける
+    try {
+      const tr = s.getVideoTracks()[0];
+      const cap = tr && tr.getCapabilities ? tr.getCapabilities() : {};
+      const adv = [];
+      if (cap.focusMode && cap.focusMode.indexOf("continuous") >= 0) adv.push({ focusMode: "continuous" });
+      if (cap.exposureMode && cap.exposureMode.indexOf("continuous") >= 0) adv.push({ exposureMode: "continuous" });
+      if (adv.length) tr.applyConstraints({ advanced: adv }).catch(() => {});
+    } catch (e) { /* 無視 */ }
     try { const pr = video.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {}
     status.className = "msg"; status.textContent = "QRコードを枠の中に写してね";
+    setTimeout(() => {
+      if (!done && status.className === "msg") status.textContent = "読めないときは、少し離したり明るい所で写してね。だめなら「写真を撮って読み取る」へ";
+    }, 8000);
     tick();
   }).catch(err => {
     if (done) return;
